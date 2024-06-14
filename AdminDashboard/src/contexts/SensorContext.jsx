@@ -5,7 +5,8 @@ const SensorContext = createContext();
 
 export const SensorProvider = ({ children }) => {
   const [sensorData, setSensorData] = useState([]);
-  const [socketConnected, setSocketConnected] = useState(false);
+  const [socketConnected1, setSocketConnected1] = useState(false);
+  const [socketConnected2, setSocketConnected2] = useState(false);
   const [gaugeValue, setGaugeValue] = useState(0);
   const [totalDistance, setTotalDistance] = useState(0);
   const [prevTimestamp, setPrevTimestamp] = useState(null);
@@ -28,8 +29,19 @@ export const SensorProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    const URL1 = "http://localhost:5001";
+    const URL1 = "http://localhost:5002";
+    const URL2 = "http://localhost:5000";
     const socket1 = io(URL1, {
+      transports: ['websocket'],
+      pingTimeout: 30000,
+      pingInterval: 5000,
+      upgradeTimeout: 30000,
+      cors: {
+        origin: "http://localhost:5173",
+      }
+    });
+    const socket2 = io(URL2, {
+      transports: ['websocket'],
       pingTimeout: 30000,
       pingInterval: 5000,
       upgradeTimeout: 30000,
@@ -39,33 +51,46 @@ export const SensorProvider = ({ children }) => {
     });
 
     socket1.connect();
+    socket2.connect();
 
     socket1.on("connect_error", (err) => {
       console.log(`connect_error due to ${err.message}`);
     });
 
+    socket2.on("connect_error", (err) => {
+      console.log(`connect_error due to ${err.message}`);
+    });
+
     socket1.on('connect', () => {
-      setSocketConnected(true);
+      setSocketConnected1(true);
+    });
+
+    socket2.on('connect', () => {
+      setSocketConnected2(true);
     });
 
     socket1.on('disconnect', () => {
-      setSocketConnected(false);
+      setSocketConnected1(false);
     });
 
-    socket1.on('sensorData', (data) => {
+    socket2.on('disconnect', () => {
+      setSocketConnected2(false);
+    });
+
+    socket1.on('speed_update', (data) => {
       const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-      const { value, date } = parsedData;
-      const newTimestamp = new Date(date).getTime();
+      const { speed, timestamp } = parsedData;
+      const newTimestamp = new Date(timestamp).getTime();
     
       setSensorData(prevData => {
-        const newData = [...prevData, { date: newTimestamp, speed: value, time: new Date(newTimestamp).toLocaleString(), distance: totalDistance }].slice(-MAX_DATA_COUNT);
+        const newData = [...prevData, { date: newTimestamp, speed, time: new Date(newTimestamp).toLocaleString(), distance: totalDistance }].slice(-MAX_DATA_COUNT);
     
-        const newGaugeValue = value > MAX_SPEED ? MAX_SPEED : value;
+        const newGaugeValue = speed > MAX_SPEED ? MAX_SPEED : speed;
         setGaugeValue(newGaugeValue);
     
         if (prevTimestamp !== null) {
           const timeDiff = (newTimestamp - prevTimestamp) / 3600000; // time difference in hours
-          const incrementalDistance = value * timeDiff; // distance in kilometers
+          const incrementalDistance = speed * timeDiff; // distance in kilometers
     
           const updatedDistance = totalDistance + incrementalDistance;
     
@@ -85,7 +110,7 @@ export const SensorProvider = ({ children }) => {
       });
     });
 
-    socket1.on('rfid_data', (data) => {
+    socket2.on('tag_data', (data) => {
       try {
         const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
 
@@ -104,6 +129,7 @@ export const SensorProvider = ({ children }) => {
 
     return () => {
       socket1.disconnect();
+      socket2.disconnect();
       clearInterval(interval);
     };
   }, [prevTimestamp, totalDistance]);
@@ -111,7 +137,8 @@ export const SensorProvider = ({ children }) => {
   return (
     <SensorContext.Provider value={{
       sensorData,
-      socketConnected,
+      socketConnected1,
+      socketConnected2,
       gaugeValue,
       totalDistance,
       currentTime,

@@ -11,7 +11,6 @@ function Home() {
     sensorData,
     socketConnected,
     gaugeValue,
-    distanceData,
     totalDistance,
     currentTime,
     rfidData,
@@ -49,7 +48,7 @@ function Home() {
           labels={{
             valueLabel: {
               fontSize: 40,
-              formatTextValue: value => kmhToMs(value).value + ' ' + kmhToMs(value).unit
+              formatTextValue: value => `${value.toFixed(2)} Km/h`
             }
           }}
           value={gaugeValue}
@@ -71,9 +70,8 @@ function Home() {
             <h3>Train Position</h3>
           </div>
           <div className="d-flex align-items-center">
-            {/* Render validTotalDistance, ensuring it's not NaN */}
             <h2>{validTotalDistance}</h2>
-            <span className="unit">Km</span>
+            <span className="unit">km</span>
           </div>
         </div>
         <div className='card'>
@@ -81,25 +79,22 @@ function Home() {
             <h3>Block</h3>
           </div>
           <div className="d-flex align-items-center">
-            <h2>{rfidData.length > 0 ? rfidData[rfidData.length - 1].name : 'Stand by ...'}</h2> {/* untuk dihubungkan dengan sensor */}
+            <h2>{rfidData.length > 0 ? rfidData[rfidData.length - 1].name : 'Stand by ...'}</h2>
             <h3>{rfidData.length > 0 ? rfidData[rfidData.length - 1].tag_id : 'Reading ...'}</h3>
           </div>
         </div>
       </div>
       <div className='button-container'>
-        {/* Card 2 */}
         <div className='company'>
           <div className="d-flex align-items-center">
             <img src={logo} alt="PT.Inka" className="company-logo" />
           </div>
         </div>
-        {/* Card 3 */}
         <div className='info-card'>
           <div className="d-flex align-items-center">
             <h2>{currentTime}</h2>
           </div>
         </div>
-        {/* Card 1 */}
         <div className='button'>
           <button onClick={() => navigate('/history')}>History</button>
         </div>
@@ -118,7 +113,7 @@ function Home() {
           >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="distance" label={{ value: "Distance (km)", position: 'insideBottomRight', offset: 0 }} />
-            <YAxis label={{ value: "Speed (Km/h)", angle: -90, position: 'insideLeft', dx: 4, dy: 50 }}   // Mengatur posisi vertikal}}
+            <YAxis label={{ value: "Speed (km/h)", angle: -90, position: 'insideLeft', dx: 4, dy: 50 }}
               domain={[0, 300]}
               ticks={[0, 100, 200, 300]}
             />
@@ -128,8 +123,8 @@ function Home() {
           </LineChart>
         </ResponsiveContainer>
       </div>
-
     </main>
   );
 }
+
 export default Home;

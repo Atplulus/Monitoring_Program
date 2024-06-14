@@ -8,7 +8,7 @@ from datetime import datetime
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'donsky!'
 socketio = SocketIO(app, cors_allowed_origins='*')
-CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:5175"}})  # Allow requests from Vite React frontend
+CORS(app, resources={r"/*": {"origins": "http://127.0.0.1:5173"}})  # Allow requests from Vite React frontend
 
 thread = None
 thread_lock = Lock()

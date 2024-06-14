@@ -1,65 +1,98 @@
-# rfid_reader.py
-
 import serial
-import time
 import threading
+import time
 from datetime import datetime
+from flask_cors import CORS
+from flask import Flask
+from flask_socketio import SocketIO
 
-class RFIDReader:
-    def __init__(self, port, baud_rate, callback):
-        self.serial_port = serial.Serial(port, baud_rate)
-        self.stop_event = threading.Event()
-        self.callback = callback
-        self.tag_status = "Stand By ..."
-        self.thread = threading.Thread(target=self.read_tag)
-        self.thread.start()
+# Initialize Flask app and SocketIO
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins='*')
+CORS(app, origins=["http://localhost:5173"])
 
-    def read_tag(self):
-        tag_names = {
-            b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x73': "TAG 1",
-            b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x76': "TAG 2",
-            b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x90': "TAG 3",
-            b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x87': "TAG 4",
-            b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x88': "TAG 5"
-        }
+# Serial port configuration
+rfid_serial_port = serial.Serial("/dev/ttyUSB0", 115200)
 
-        while not self.stop_event.is_set():
-            command = b'\x43\x4D\x02\x02\x00\x00\x00\x00'
-            self.serial_port.write(command)
-            data = self.serial_port.read(26)
+# Function to format tag ID with spaces
+def format_tag_id(tag_id):
+    return ' '.join(format(byte, '02X') for byte in tag_id)
 
-            if data:
-                tag_detected = False
-                for tag, name in tag_names.items():
-                    if data.startswith(tag):
-                        tag_detected = True
-                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        formatted_tag = self.format_tag_id(tag)
-                        print(f"{name} detected: {formatted_tag} at {timestamp}")
-                        self.tag_status = name
-                        self.callback(name, formatted_tag, timestamp)
-                        break
-                if not tag_detected:
-                    self.tag_status = "STAND BY ..."
-            else:
-                self.tag_status = "STAND BY ..."
-            time.sleep(1)
+# Function to read tags
+def read_tag(stop_event):
+    tag_names = {
+        b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x73': "TAG 1",
+        b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x76': "TAG 2",
+        b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x90': "TAG 3",
+        b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x87': "TAG 4",
+        b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x88': "TAG 5"
+    }
 
-    @staticmethod
-    def format_tag_id(tag):
-        return '-'.join(f"{byte:02X}" for byte in tag)
+    while not stop_event.is_set():
+        command = b'\x43\x4D\x02\x02\x00\x00\x00\x00'  # Correct command
+        rfid_serial_port.write(command)
+        data = rfid_serial_port.read(26)
 
-    def stop(self):
-        self.stop_event.set()
-        self.thread.join()
+        if data:
+            for tag, name in tag_names.items():
+                if tag in data:
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    formatted_tag = format_tag_id(tag)
+                    print(name + " detected:", formatted_tag, "at", timestamp)
+                    socketio.start_background_task(target=emit_tag_data, name=name, tag_id=formatted_tag, timestamp=timestamp)
+                    break
+        else:
+            print("No data received")
 
-if __name__ == "__main__":
-    def rfid_callback(name, tag_id, timestamp):
-        print(f"RFID Callback - Timestamp: {timestamp}, Name: {name}, Tag ID: {tag_id}")
+        time.sleep(0.1)
 
-    rfid_reader = RFIDReader(port='/dev/...', baud_rate=115200, callback=rfid_callback)
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        rfid_reader.stop()
+# Function to emit tag data to WebSocket clients
+def emit_tag_data(name, tag_id, timestamp):
+    print(f"Emitting data: {name}, {tag_id}, {timestamp}")
+    socketio.emit('tag_data', {'timestamp': timestamp, 'name': name, 'tag_id': tag_id})
+
+# Function to stop RFID reading
+def stop_reading(stop_event):
+    stop_event.set()
+    print("Stopping RFID reading...")
+
+# Event object to stop RFID reading
+stop_event = threading.Event()
+
+# Thread to continuously read tags
+rfid_thread = threading.Thread(target=read_tag, args=(stop_event,))
+rfid_thread.start()
+
+@app.route('/')
+def index():
+    return "RFID Reader WebSocket Server"
+
+if __name__ == '__main__':
+    # Start Flask-SocketIO server
+    socketio.run(app, host='localhost', port=5000)
+
+try:
+    while True:
+        user_input = input("Type 'stop' to stop RFID reading: ")
+        if user_input.lower() == 'stop':
+            break
+        time.sleep(0.1)
+finally:
+    # After finishing, call the function to stop RFID reading
+    stop_reading(stop_event)
+    # Wait for the thread to finish
+    rfid_thread.join()
+
+    # Command to stop RFID operation
+    stop_command = b'\x43\x4D\x03\x02\x02\x00\x00\x00\x00'
+    rfid_serial_port.write(stop_command)
+
+    # Read response from the device
+    response = rfid_serial_port.read(10)  # Response length 10 bytes
+    if response == b'\x43\x4D\x03\x03\x03\x00\x00\x00\x00\x00':
+        print("RFID reading successfully stopped.")
+    else:
+        print("Failed to stop RFID reading.")
+
+    # Close serial port
+    rfid_serial_port.close()

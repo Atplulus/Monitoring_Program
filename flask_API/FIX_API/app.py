@@ -1,70 +1,70 @@
-# app.py
-import json
+import serial
 import threading
-import logging
-from flask import Flask, request
-from flask_socketio import SocketIO
 from flask_cors import CORS
 from datetime import datetime
-from time import sleep
-from speed_reader import Readspeed
-from rfid_reader import RFIDReader
+from flask import Flask, render_template
+from flask_socketio import SocketIO, emit
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-
+# Initialize Flask app and SocketIO
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'Bissmillah!'
+app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins='*')
 CORS(app, origins=["http://localhost:5173"])
+# Declare the serial port
+ser = serial.Serial('/dev/ttyACM0', 9600)
 
-# Shared data structure
-shared_data = {
-    'timestamp': None,
-    'value': None,
-    'Tag': None,
-    'ID': None
-}
-
-# Thread lock for synchronizing access to shared data
-thread_lock = Lock()
-
-# Initialize speed reader and RFID reader
-readspeed = Readspeed('/dev/ttyUSB0', 195200)
-rfidreader = RFIDReader('/dev/ttyUSB1', 115200, callback=lambda name, tag_id, timestamp: rfid_callback(name, tag_id, timestamp))
+stop_event = threading.Event()
+callback = None
 
 def get_current_datetime():
-    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now()
+    return now.strftime("%m/%d/%Y %H:%M:%S")
 
-def speed_callback(speed):
-    with thread_lock:
-        shared_data['value'] = speed
-        shared_data['timestamp'] = get_current_datetime()
-        logging.info(f"Speed Data: {shared_data}")
-        socketio.emit('sensorData', json.dumps(shared_data))
+def read_speed():
+    while not stop_event.is_set():
+        line = ser.readline().decode('utf-8').strip()
+        if line:
+            try:
+                speed = float(line)
+                callback(speed)
+            except ValueError:
+                print(f"Unable to convert line to float: {line}")
+        else:
+            print("No data received from the sensor. Returning from read_speed.")
 
-def rfid_callback(name, tag_id, timestamp):
-    with thread_lock:
-        shared_data['Tag'] = name
-        shared_data['ID'] = tag_id
-        shared_data['timestamp'] = timestamp
-        logging.info(f"RFID Data: {shared_data}")
-        socketio.emit('sensorData', json.dumps(shared_data))
+def stop():
+    stop_event.set()
 
-# Start the speed reader and RFID reader in separate threads
-def start_sensors():
-    threading.Thread(target=readspeed.start_reading, args=(speed_callback,)).start()
-    threading.Thread(target=rfidreader.read_tag).start()
+# Example usage:
+def example_callback(speed):
+    timestamp = get_current_datetime()
+    print(f"Speed: {speed}, Timestamp: {timestamp}")
+    socketio.emit('speed_update', {'speed': speed, 'timestamp': timestamp})
 
+callback = example_callback
+
+# Create and start the serial reading thread
+thread = threading.Thread(target=read_speed)
+thread.start()
+
+# WebSocket route
 @app.route('/')
 def index():
-    return "RFID and Speed Reader Server Running"
+    return "Speed Reader WebSocket Server"
 
-if __name__ == "__main__":
-    start_sensors()
-    try:
-        socketio.run(app, host='0.0.0.0', port=5000)
-    except KeyboardInterrupt:
-        rfidreader.stop()
-        readspeed.stop()
-        logging.info("Server stopped.")
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+
+# Stop the serial reading thread when the app stops
+@socketio.on('stop')
+def handle_stop():
+    stop()
+    thread.join()
+
+if __name__ == '__main__':
+    socketio.run(app,host='localhost', port=5002)
