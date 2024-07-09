@@ -12,7 +12,7 @@ socketio = SocketIO(app, cors_allowed_origins='*')
 CORS(app, origins=["http://localhost:5173"])
 
 # Serial port configuration
-rfid_serial_port = serial.Serial("/dev/ttyUSB0", 115200)
+rfid_serial_port = serial.Serial("COM13", 115200)
 
 # Function to format tag ID with spaces
 def format_tag_id(tag_id):

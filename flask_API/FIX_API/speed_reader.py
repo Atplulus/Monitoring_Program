@@ -1,97 +1,65 @@
-# speed_app.py
-
-from flask import Flask, jsonify
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
 import serial
 import threading
-import sys
-from datetime import datetime
+import time
+import json
+import csv
 
-# Initialize Flask application
-app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins='*')
-CORS(app, origins=["http://localhost:5173"])
-
-# Configure serial port
-serial_port_path = '/dev/ttyACM0'  # Adjust this as needed
-baud_rate = 9600
-
-class SensorReader:
-    def __init__(self, port, baud_rate, callback):
-        """
-        Initialize sensor reading via serial port.
-        
-        port: Path to the serial port.
-        baud_rate: Baud rate for serial communication.
-        callback: Callback function to send data to the websocket.
-        """
+class Readspeed:
+    def __init__(self, port, baud_rate, callback, csv_filename, timeout=1):
         self.serial_port = serial.Serial(port, baud_rate)
-        self.callback = callback
         self.stop_event = threading.Event()
-        self.thread = threading.Thread(target=self.read_speed)
-        
+        self.callback = callback
+        self.timeout = timeout  # Timeout in seconds
+        self.csv_filename = csv_filename
+
+        # Open the CSV file in write mode and write the header
+        self.csv_file = open(self.csv_filename, mode='w', newline='')
+        self.csv_writer = csv.writer(self.csv_file)
+        self.csv_writer.writerow(["Timestamp", "Speed"])
+
     def read_speed(self):
-        """
-        Continuously read speed from the sensor.
-        If data is received, call the callback with the data.
-        """
+        start_time = time.time()
         while not self.stop_event.is_set():
+            if time.time() - start_time > self.timeout:
+                print("Speed reading timed out. Stopping thread.")
+                return
             try:
                 line = self.serial_port.readline().decode('utf-8').strip()
-                if line:
-                    try:
-                        speed = float(line)
-                        self.callback(speed)
-                    except ValueError:
-                        print(f"Cannot convert line to float: {line}")
-                else:
-                    print("No data received from sensor.")
-            except serial.SerialException as e:
-                print(f"Serial exception: {e}")
-                self.stop_event.set()
-            except Exception as e:
-                print(f"Unexpected exception: {e}")
-                self.stop_event.set()
+            except UnicodeDecodeError as e:
+                print(f"Unicode decode error: {e}")
+                continue
 
-    def start(self):
-        """
-        Start the thread to read data from the sensor.
-        """
-        self.thread.start()
+            if line:  # Check if line is not empty
+                try:
+                    # Parse the JSON data
+                    data = json.loads(line)
+                    # Extract the speed value and convert to float
+                    speed = float(data['speed'])
+                    timestamp = time.time()
+                    self.callback(speed)
+                    # Write the timestamp and speed to the CSV file
+                    self.csv_writer.writerow([timestamp, speed])
+                except (ValueError, KeyError, json.JSONDecodeError) as e:
+                    print(f"Unable to process line: {line}. Error: {e}")
+            else:
+                print("No data received from the sensor. Returning from read_speed.")
+                return  # Return from the method if no data is received
 
     def stop(self):
-        """
-        Stop reading data from the sensor and close the serial connection.
-        """
         self.stop_event.set()
-        self.thread.join()
-        self.serial_port.close()
+        self.csv_file.close()  # Close the CSV file when stopping
 
-def send_speed_data(speed):
-    """
-    Send speed data to the websocket.
-    
-    :param speed: Speed data to be sent.
-    """
-    timestamp = datetime.now().isoformat()
-    socketio.emit('sensor1_data', {'data': speed, 'timestamp': timestamp})
+# Example callback function
+def my_callback(speed):
+    print(f"Speed: {speed} km/h")
 
-# Initialize sensor reading
-sensor_reader = SensorReader(serial_port_path, baud_rate, send_speed_data)
+# Example usage
+if __name__ == "__main__":
+    reader = Readspeed("COM15", 115200, my_callback, "speed_data.csv")
+    read_thread = threading.Thread(target=reader.read_speed)
+    read_thread.start()
 
-@app.route('/sensor1')
-def sensor1_data():
-    """
-    Endpoint to check the status of sensor reading.
-    
-    :return: JSON with the status of sensor reading.
-    """
-    return jsonify({'status': 'Sensor reading running'}), 200
-
-if __name__ == '__main__':
-    """
-    Entry point of the application. Start sensor reading and run the Flask application with SocketIO.
-    """
-    sensor_reader.start()
-    socketio.run(app, port=5002)
+    # Run for some time and then stop
+    time.sleep(10)
+    reader.stop()
+    read_thread.join()

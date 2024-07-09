@@ -11,7 +11,7 @@ app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins='*')
 CORS(app, origins=["http://localhost:5173"])
 # Declare the serial port
-ser = serial.Serial('/dev/ttyACM0', 9600)
+ser = serial.Serial('COM15', 9600)
 
 stop_event = threading.Event()
 callback = None

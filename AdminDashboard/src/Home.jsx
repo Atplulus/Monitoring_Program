@@ -100,7 +100,7 @@ function Home() {
         </div>
       </div>
       <div className='line-chart'>
-        <h3>Grafik kecepatan terhadap jarak</h3>
+        <h3>Chart Speed Over Time</h3>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart
             data={sensorData}
