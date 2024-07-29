@@ -1,3 +1,4 @@
+// contexts/SensorContext.js
 import React, { createContext, useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
@@ -21,8 +22,8 @@ export const SensorProvider = ({ children }) => {
       return { value: 'N/A', unit: 'Km/h' };
     }
     if (value >= 1) {
-      const msValue = value / 3.6;
-      return { value: msValue.toFixed(2), unit: 'm/s' };
+      const msValue = value / 1;
+      return { value: msValue.toFixed(2), unit: 'Kmph' };
     } else {
       return { value: value.toFixed(2), unit: 'Km/h' };
     }

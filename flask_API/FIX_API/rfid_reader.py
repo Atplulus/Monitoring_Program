@@ -1,6 +1,7 @@
 import serial
 import threading
 import time
+import csv
 from datetime import datetime
 from flask_cors import CORS
 from flask import Flask
@@ -28,23 +29,31 @@ def read_tag(stop_event):
         b'\xE2\x00\x20\x23\x12\x05\xEE\xAA\x00\x01\x00\x88': "TAG 5"
     }
 
-    while not stop_event.is_set():
-        command = b'\x43\x4D\x02\x02\x00\x00\x00\x00'  # Correct command
-        rfid_serial_port.write(command)
-        data = rfid_serial_port.read(26)
+    # Open CSV file and write header
+    with open('rfid_data.csv', mode='w', newline='') as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['Timestamp', 'Tag Name', 'Tag ID'])
 
-        if data:
-            for tag, name in tag_names.items():
-                if tag in data:
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    formatted_tag = format_tag_id(tag)
-                    print(name + " detected:", formatted_tag, "at", timestamp)
-                    socketio.start_background_task(target=emit_tag_data, name=name, tag_id=formatted_tag, timestamp=timestamp)
-                    break
-        else:
-            print("No data received")
+        while not stop_event.is_set():
+            command = b'\x43\x4D\x02\x02\x00\x00\x00\x00'  # Correct command
+            rfid_serial_port.write(command)
+            data = rfid_serial_port.read(26)
 
-        time.sleep(0.1)
+            if data:
+                for tag, name in tag_names.items():
+                    if tag in data:
+                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        formatted_tag = format_tag_id(tag)
+                        print(name + " detected:", formatted_tag, "at", timestamp)
+                        socketio.start_background_task(target=emit_tag_data, name=name, tag_id=formatted_tag, timestamp=timestamp)
+                        # Write data to CSV
+                        csv_writer.writerow([timestamp, name, formatted_tag])
+                        csv_file.flush()  # Ensure data is written to the file
+                        break
+            else:
+                print("No data received")
+
+            time.sleep(0.001)
 
 # Function to emit tag data to WebSocket clients
 def emit_tag_data(name, tag_id, timestamp):
@@ -76,7 +85,7 @@ try:
         user_input = input("Type 'stop' to stop RFID reading: ")
         if user_input.lower() == 'stop':
             break
-        time.sleep(0.1)
+        time.sleep(0.01)
 finally:
     # After finishing, call the function to stop RFID reading
     stop_reading(stop_event)

@@ -1,3 +1,4 @@
+// Home.jsx
 import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './App.css';
@@ -9,7 +10,8 @@ import SensorContext from './contexts/SensorContext';
 function Home() {
   const {
     sensorData,
-    socketConnected,
+    socketConnected1,
+    socketConnected2,
     gaugeValue,
     totalDistance,
     currentTime,
@@ -17,10 +19,8 @@ function Home() {
     kmhToMs
   } = useContext(SensorContext);
 
-  // Define the maximum speed for the gauge
   const MAX_SPEED = 350;
 
-  // Define the gauge limits with their respective colors
   const gaugeLimits = [
     { color: '#00ff00', limit: 80 },
     { color: '#ffff00', limit: 130 },
@@ -112,10 +112,10 @@ function Home() {
             }}
           >
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="distance" label={{ value: "Distance (km)", position: 'insideBottomRight', offset: 0 }} />
+            <XAxis dataKey="time" label={{ value: "Time", position: 'insideBottomRight', offset: 0 }} />
             <YAxis label={{ value: "Speed (km/h)", angle: -90, position: 'insideLeft', dx: 4, dy: 50 }}
-              domain={[0, 300]}
-              ticks={[0, 100, 200, 300]}
+              domain={[0, 60]}
+              ticks={[0, 20, 40, 60]}
             />
             <Tooltip />
             <Legend />
